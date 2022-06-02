@@ -55,8 +55,7 @@ services:
         "150G"
       ]
     depends_on:
-      node:
-        condition: service_healthy
+      - node
 
 volumes:
   node-data:
