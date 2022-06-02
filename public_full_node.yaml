@@ -1,35 +1,65 @@
-base:
-  # This is the location Aptos will store its database. It is backed by a dedicated docker volume
-  # for persistence.                                   
-  data_dir: "/opt/aptos/data"
-  role: "full_node"
-  waypoint:
-    # This is a checkpoint into the blockchain for added security.
-    from_file: "/opt/aptos/etc/waypoint.txt"
-execution:
-  # Path to a genesis transaction. Note, this must be paired with a waypoint. If you update your
-  # waypoint without a corresponding genesis, the file location should be an empty path.
-  genesis_file_location: "/opt/aptos/etc/genesis.blob"
-full_node_networks:
-  - network_id: "public"
-    discovery_method: "onchain"
-    # The network must have a listen address to specify protocols. This runs it locally to
-    # prevent remote, incoming connections.
-    listen_address: "/ip4/0.0.0.0/tcp/6180"
-    # Define the upstream peers to connect to
-    seeds: 
-      bb14af025d226288a3488b4433cf5cb54d6a710365a2d95ac6ffbd9b9198a86a:
-        addresses:
-        - "/dns4/pfn0.node.devnet.aptoslabs.com/tcp/6182/ln-noise-ik/bb14af025d226288a3488b4433cf5cb54d6a710365a2d95ac6ffbd9b9198a86a/ln-handshake/0"
-        role: "Upstream"
-      bb14af025d226288a3488b4433cf5cb54d6a710365a2d95ac6ffbd9b9198a86a:
-        addresses:
-        - "/ip4/100.20.221.187/tcp/6182/ln-noise-ik/bb14af025d226288a3488b4433cf5cb54d6a710365a2d95ac6ffbd9b9198a86a/ln-handshake/0"
-        role: "Upstream"
-    identity:
-      type: from_config
-      key: 509586AFA20F9BDC6E76D60A32A8EFCC8C6E264D3AD8FBDA6B68BC0BDE104469
-      peer_id: ac23b2cbd59a802961a6f05a22178f56783fb7032ef3df4046be8d505a15c106
-api:
-  # This specifies your REST API endpoint. Intentionally on public so that Docker can export it.
-  address: 0.0.0.0:8080
+version: "3.7"
+services:
+  node:
+    # For running on Aarch64 add `-aarch64` after `DATE`
+    image: ghcr.io/subspace/node:gemini-1b-2022-june-02
+    volumes:
+# Instead of specifying volume (which will store data in `/var/lib/docker`), you can
+# alternatively specify path to the directory where files will be stored, just make
+# sure everyone is allowed to write there
+      - node-data:/var/subspace:rw
+#      - /path/to/subspace-node:/var/subspace:rw
+    ports:
+# If port 30333 is already occupied by another Substrate-based node, replace all
+# occurrences of `30333` in this file with another value
+      - "0.0.0.0:30333:30333"
+    restart: unless-stopped
+    command: [
+      "--chain", "gemini-1",
+      "--base-path", "/var/subspace",
+      "--execution", "wasm",
+      "--pruning", "1024",
+      "--keep-blocks", "1024",
+      "--port", "30333",
+      "--rpc-cors", "all",
+      "--rpc-methods", "safe",
+      "--unsafe-ws-external",
+      "--validator",
+# Replace `INSERT_YOUR_ID` with your node ID (will be shown in telemetry)
+      "--name", "149.102.154.179"
+    ]
+    healthcheck:
+      timeout: 5s
+# If node setup takes longer then expected, you want to increase `interval` and `retries` number.
+      interval: 30s
+      retries: 5
+
+  farmer:
+    depends_on:
+      node:
+        condition: service_healthy
+    # For running on Aarch64 add `-aarch64` after `DATE`
+    image: ghcr.io/subspace/farmer:gemini-1b-2022-june-02
+# Un-comment following 2 lines to unlock farmer's RPC
+#    ports:
+#      - "127.0.0.1:9955:9955"
+# Instead of specifying volume (which will store data in `/var/lib/docker`), you can
+# alternatively specify path to the directory where files will be stored, just make
+# sure everyone is allowed to write there
+    volumes:
+      - farmer-data:/var/subspace:rw
+#      - /path/to/subspace-farmer:/var/subspace:rw
+    restart: unless-stopped
+    command: [
+      "--base-path", "/var/subspace",
+      "farm",
+      "--node-rpc-url", "ws://node:9944",
+      "--ws-server-listen-addr", "0.0.0.0:9955",
+# Replace `WALLET_ADDRESS` with your Polkadot.js wallet address
+      "--reward-address", "stBA3hddVJ6fHgBtMkAcgfkpho6Zq1MhD98gSwkysHpzTLAxL",
+# Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for instance 100G or 2T (but leave at least 10G of disk space for node)
+      "--plot-size", "150G"
+    ]
+volumes:
+  node-data:
+  farmer-data:
